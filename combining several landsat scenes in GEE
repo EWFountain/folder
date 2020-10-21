@@ -1,0 +1,50 @@
+// Draw a rectangle around the study area. Call it study_area. Then visualise it:
+Map.addLayer(study_area);
+ 
+// landsat 8 cloud masking
+function maskL5sr(image) {
+  // Bits 3 and 5 are cloud shadow and cloud, respectively.
+  var cloudShadowBitMask = (1 << 3);
+  var cloudsBitMask = (1 << 5);
+  // Get the pixel QA band.
+  var qa = image.select('pixel_qa');
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0)
+                 .and(qa.bitwiseAnd(cloudsBitMask).eq(0));
+  return image.updateMask(mask);
+}
+ 
+//day of year range
+var startDay = 182
+var endDay = 304
+ 
+//year range
+var startYear = 1989
+var endYear = 1990
+ 
+//load collection, fitler dates and apply cloud mask
+var collection = ee.ImageCollection("LANDSAT/LT05/C01/T1_SR")
+.filterBounds(study_area)
+.filter(ee.Filter.calendarRange(startDay,endDay,'day_of_year'))
+.filter(ee.Filter.calendarRange(startYear,endYear,'year'))
+.map(maskL5sr)
+.select(['B1','B2','B3','B4','B5','B6','B7']);
+
+//compute metrics
+var metrics = collection.reduce(ee.Reducer.stdDev())
+.addBands(collection.reduce(ee.Reducer.mean()))
+.addBands(collection.reduce(ee.Reducer.percentile([0,5,25, 50,75,95,100])));
+   
+//Map.addLayer(collection);
+Map.addLayer(collection, {bands: ['B4', 'B3', 'B2'],min:0, max: 3000}, 'selected Landsat images');
+ 
+// set output projection using epsg codes from http://spatialreference.org/ref/epsg/wgs-84-utm-zone-35n/
+// so for utm35N the EPSG code is 32635
+var outProj = "EPSG:32635";
+ 
+Export.image.toDrive({image: metrics,
+description: "tanzania_l5_metrics2",
+scale: 30,
+region: study_area,
+crs:outProj
+});  
